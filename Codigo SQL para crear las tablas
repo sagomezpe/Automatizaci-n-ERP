@@ -1,0 +1,74 @@
+-- Eliminar primero tablas con claves foráneas, para posteriores modificaciones en codigo SQL
+DROP TABLE IF EXISTS payment_applications CASCADE;
+DROP TABLE IF EXISTS collection_history CASCADE;
+DROP TABLE IF EXISTS account_statements CASCADE;
+DROP TABLE IF EXISTS payments CASCADE;
+DROP TABLE IF EXISTS invoices CASCADE;
+DROP TABLE IF EXISTS clients CASCADE;
+
+-- Eliminar tipo ENUM
+DROP TYPE IF EXISTS invoice_status;
+
+
+-- Tabla de Clientes
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";              -- Permite crear el uuid de forma aleatoria, existen diversos metodos como algoritmos utilizando la direccion MAC, pero resulta mejor el gen_random_uuid por seguridad
+
+CREATE TABLE clients (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),      -- Se crea la llave id (identificador unico universal) con uuid para asegurar la seguridad al considerar una comunicacion con un agente ia
+    name TEXT NOT NULL,                                 -- Nombre del usuario, puede repetirse, se usan valores tipo text ya que generalmente varchar no ofrece mejores beneficios
+    register_number TEXT UNIQUE NOT NULL,               -- Cada persona tiene un id unico e intransferible, dato que deberia usarse en consultas
+    contract_number TEXT UNIQUE NOT NULL,               -- Usualmente se suele establecer un numero de contrato a cada usuario el cual nunca varia y es util en consultas
+    email TEXT UNIQUE NOT NULL,                         -- Cada email es unico, pero el usuario puede cambiarlo con el tiempo por diversas cuestiones como seguridad
+    phone TEXT UNIQUE NOT NULL,                         -- Cada numero de telefono es unico pero puede cambiar por diversos motivos
+    created_at TIMESTAMPTZ DEFAULT now()                -- Asigna la fecha al momento de crear el usuario
+);
+
+-- Tabla de Facturas
+CREATE TYPE invoice_status AS ENUM ('unpaid', 'partially_paid', 'paid');   -- Se definen los estados de las facturas para evitar problemas de insercion al realizarlo en texto, de esta manera solo quedan 3 estados validos    
+
+CREATE TABLE invoices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),                         -- id unico de factura    
+    client_id UUID REFERENCES clients(id) ON DELETE CASCADE,               -- Se crea la llave foranea que referencia cada factura a un cliente, de manera que existe una relacion de muchos a uno, si se elimina el cliente se borran todas sus facturas asociadas
+    invoice_number TEXT NOT NULL UNIQUE,                                   -- Numero de la factura, al contar con esta variable es mejor dejar un registro unico para facilitar la comprension
+    invoice_date DATE NOT NULL,                                            -- Fecha de emision de la factura
+    due_date DATE NOT NULL,                                          -- IMPORTANTE: Fecha de vencimiento, se debe manejar con respecto a la fecha actual para el envio de notificaciones al usuario
+    total_amount NUMERIC(12,2) NOT NULL,                                   -- Cantidad a pagar con tamaño de hasta 12 numeros siendo 2 decimales (ej: 9999999999,99)
+    amount_paid NUMERIC(12,2) DEFAULT 0,                                   -- Cantidad pagada, si no se define por defecto se asume un pago de 0
+    status invoice_status DEFAULT 'unpaid',                          -- IMPORTANTE Estado de la factura, por defecto se asume que no se ha pagado, en concordancia con cantidad pagada, se cambia con triggers
+    created_at TIMESTAMPTZ DEFAULT now()                                   -- Asigna la fecha al momento de crear la factura
+);
+
+-- Tabla de Pagos
+CREATE TABLE payments (                                   
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),                -- id unica de pagos 
+  client_id UUID REFERENCES clients(id)ON DELETE CASCADE,       -- Se crea la llave foranea que referencia cada pago a un cliente (muchos a uno) (diferente al numero de facturas puesto que se puede hacer pagos parciales o de varias facturas)
+  amount NUMERIC NOT NULL,                                      -- Valor pagado por el usuario
+  payment_date TIMESTAMP DEFAULT now()                          -- Fecha de pago, el cual se determina al crear el dato, a nivel practico se debe conectar la plataforma de pago con la base de datos y que realice un insert
+);
+
+CREATE TABLE account_statements (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),                                        -- id unica del estado de cuenta
+    client_id UUID REFERENCES clients(id) ON DELETE CASCADE,                              -- LLave foranea que relaciona cada estado de cuenta a un cliente (relacion uno a uno)
+    total_invoiced NUMERIC(12,2) NOT NULL,                                                -- Total de facturas
+    total_paid NUMERIC(12,2) NOT NULL,                                                    -- Total pagado
+    balance NUMERIC(12,2) GENERATED ALWAYS AS (total_invoiced - total_paid) STORED,       -- Valor a pagar    
+    updated_at TIMESTAMPTZ DEFAULT now()                                                  -- Fecha de ultima actualizacion 
+);
+
+CREATE TABLE collection_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+    invoice_id UUID REFERENCES invoices(id),
+    action TEXT NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Determinar el orden de las facturas segun FIFO, puede relacionar con pagos y facturas de cada cliente, SE DEBE USAR TRIGGER
+CREATE TABLE payment_applications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    payment_id UUID REFERENCES payments(id) ON DELETE CASCADE,
+    invoice_id UUID REFERENCES invoices(id) ON DELETE CASCADE,
+    amount_applied NUMERIC(12,2) NOT NULL,
+    applied_at TIMESTAMPTZ DEFAULT now()
+);
