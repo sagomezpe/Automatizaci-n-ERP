@@ -1,0 +1,41 @@
+// Convierte la informacion de la base de datos a JSON
+
+const registros = $input.all().map(row => row.json);
+
+return [{json: { data: registros} }];
+
+
+// Convierte a JSON y añade un texto de factura vencida
+
+const registros = $input.all().map(row => {
+  
+  const data = row.json;
+
+  return {
+    ...data,
+    text: `Su factura ${data.invoice_number} está vencida.`
+  };
+});
+
+return [{ json: { data: registros } }];
+
+// Convierte a JSON y agrega un texto informando de los dias a vencer de una factura
+
+const registros = $input.all().map(row => {
+  
+  const data = row.json;
+  
+  const dueDate = new Date(data.due_date);
+  const today = new Date();
+  
+  // Solo se comparan fechas (sin horas)
+  const diffTime = dueDate.setHours(0,0,0,0) - today.setHours(0,0,0,0);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  return {
+    ...data,
+    text: `Su factura ${data.invoice_number} está próxima a vencer en ${diffDays} día(s).`
+  };
+});
+
+return [{ json: { data: registros } }];
