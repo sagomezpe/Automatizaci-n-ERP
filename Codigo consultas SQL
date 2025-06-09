@@ -1,0 +1,19 @@
+-- facturas proximas a vencer
+
+SELECT i.invoice_number, i.due_date, c.email, c.phone
+FROM invoices i
+JOIN clients c ON i.client_id = c.id
+WHERE i.status != 'paid'
+  AND (
+    i.due_date >= CURRENT_DATE AND i.due_date <= CURRENT_DATE + INTERVAL '7 days'
+  );
+
+-- facturas vencidas
+
+SELECT i.invoice_number, c.email, c.phone
+FROM invoices i
+JOIN clients c ON i.client_id = c.id
+WHERE i.status != 'paid'
+  AND (
+    i.due_date <= CURRENT_DATE
+  );
