@@ -1,0 +1,59 @@
+-- Crear clientes
+INSERT INTO clients (id, name, register_number, contract_number, email, phone) VALUES
+  (gen_random_uuid(), 'Juan Pérez', '1001000000', '1', 'juan@example.com', '+573100000000'),
+  (gen_random_uuid(), 'Ana Martínez', '1002000000', '2','ana@example.com', '+573110000000');
+
+-- Para referencia, recupera los UUIDs generados:
+-- SELECT * FROM clients;
+
+-- Cliente_id_1 = 'uuid-juan', cliente_id_2 = 'uuid-ana', pero estos datos estan enmascarados por lo que se debe preguntar de acuerdo a datos que conoce el cliente como registro, contrato, contraseña, etc para mejorar la seguridad
+
+-- Creacion de facturas
+INSERT INTO invoices (client_id, invoice_number, invoice_date, due_date, total_amount)
+SELECT id, 'F001', '2025-05-01', '2025-05-15', 100000
+FROM clients WHERE register_number = '1001000000' AND contract_number = '1';  -- Valores de busqueda para Juan
+
+INSERT INTO invoices (client_id, invoice_number, invoice_date, due_date, total_amount)
+SELECT id, 'F002', '2025-05-05', '2025-05-20', 150000
+FROM clients WHERE register_number = '1001000000' AND contract_number = '1'; 
+
+INSERT INTO invoices (client_id, invoice_number, invoice_date, due_date, total_amount)
+SELECT id, 'F003', '2025-05-25', '2025-06-10', 50000
+FROM clients WHERE register_number = '1002000000' AND contract_number = '2';  -- Valores de busqueda para Ana
+
+-- Pagos 
+INSERT INTO payments (client_id, payment_date, amount)
+SELECT id, '2025-06-05', 120000
+FROM clients WHERE register_number = '1001000000' AND contract_number = '1'; 
+
+INSERT INTO payments (client_id, payment_date, amount)
+SELECT id, '2025-06-07', 50000
+FROM clients WHERE register_number = '1002000000' AND contract_number = '2'; 
+
+-- Acción de cobranza
+INSERT INTO collection_history (client_id, invoice_id, action, notes)
+SELECT c.id, i.id, 'Llamada telefónica', 'Se contactó al cliente por F001'
+FROM clients c JOIN invoices i ON c.id = i.client_id
+WHERE register_number = '1001000000' AND contract_number = '1'; 
+
+-- Otra acción
+INSERT INTO collection_history (client_id, action, notes)
+SELECT id, 'Correo enviado', 'Se informó de facturas vencidas'
+FROM clients WHERE register_number = '1001000000' AND contract_number = '1'; 
+
+-- Estado de cuenta para Juan
+INSERT INTO account_statements (client_id, total_invoiced, total_paid)
+SELECT id, 250000, 120000 
+FROM clients WHERE register_number = '1001000000' AND contract_number = '1'; 
+
+-- Estado de cuenta para Ana
+INSERT INTO account_statements (client_id, total_invoiced, total_paid)
+SELECT id, 50000, 50000 
+FROM clients WHERE register_number = '1002000000' AND contract_number = '2'; ; 
+
+-- Aplicación de pago (Juan pago 100000)
+INSERT INTO payment_applications (payment_id, invoice_id, amount_applied)
+SELECT p.id, i.id, 100000
+FROM payments p
+JOIN invoices i ON p.client_id = i.client_id
+WHERE p.amount = 120000 AND i.invoice_number = 'F001';
